@@ -5,7 +5,7 @@ inputs:
   arkdep-profiles-repo:
     description: 'arkdep profiles to clone'
     required: false
-    default: 'https://github.com/philmmanjaro/arkdep'
+    default: 'https://github.com/manjaro/arkdep-variants.git'
   arkdep-profiles-branch:
     description: 'branch of the iso profiles to check out'
     required: false
@@ -167,10 +167,12 @@ runs:
     - id: install-arkdep
       shell: bash
       env:
-        BRANCH: "mjr"
-        REPO: 'https://github.com/philmmanjaro/arkdep.git'
+        BRANCH: "main"
+        REPO: 'https://github.com/arkanelinux/arkdep.git'
       run: |
         sudo git clone ${BRANCH:+--branch ${BRANCH}} --depth 1 ${REPO} arkdep
+        sudo wget https://gitlab.manjaro.org/packages/extra/arkdep/-/raw/main/manjaro.patch
+        sudo patch -p1 -i manjaro.patch
         sudo install -d /etc/arkdep
         sudo install -d /usr/bin
         sudo install -m755 arkdep/arkdep-build /usr/bin/
