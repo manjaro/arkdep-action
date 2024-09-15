@@ -1,0 +1,265 @@
+name: 'Manjaro Arkdep Build Action'
+description: 'Installs prerequisites for building Manjaro Arkdep on ubuntu'
+
+inputs:
+  arkdep-profiles-repo:
+    description: 'arkdep profiles to clone'
+    required: false
+    default: 'https://github.com/philmmanjaro/arkdep'
+  arkdep-profiles-branch:
+    description: 'branch of the iso profiles to check out'
+    required: false
+  edition:
+    description: 'name of the arkdep profile to build'
+    required: true
+  release-tag:
+    description: 'release tag to upload to (if set)'
+    required: false
+  gpg-secret-key-base64:
+    description: 'base64 encoded gpg secret key (without a passphrase) to sign the zip (if set)'
+    required: false
+  gpg-passphrase:
+    description: 'phrase to decrypt the gpg secret key if given'
+    required: false
+  additional-trusted-gpg:
+    description: 'gpg keyids that pacman should trust'
+    required: false
+  s3-cfg:
+    description: 'S3 config'
+    required: false
+  s3-cdn77-id:
+    description: 'S3 CDN77 ID'
+    required: false
+  s3-cdn77-bearer:
+    description: 'S3 CDN77 bearer'
+    required: false
+
+outputs:
+  file-path:
+    description: "path of the generated iso"
+    value: ${{ steps.image-build.outputs.file-path }}
+
+runs:
+  using: "composite"
+  steps:
+    - id: install-build-dependencies
+      shell: bash
+      run: |
+        sudo apt-get update
+        sudo apt-get install \
+          gdisk \
+          zip \
+          systemd-container \
+          bmap-tools \
+          asciidoc \
+          libarchive-tools \
+          git \
+          build-essential \
+          cmake \
+          libarchive-dev \
+          pkg-config \
+          libcurl4-openssl-dev \
+          libgpgme-dev \
+          libssl-dev \
+          fakeroot \
+          dh-autoreconf \
+          haveged \
+          os-prober \
+          kwalify \
+          dosfstools \
+          libisoburn1 \
+          squashfs-tools \
+          docbook2x \
+          mktorrent \
+          doxygen \
+          zstd \
+          s3cmd \
+          curl \
+          btrfs-progs \
+          meson \
+          libkmod-dev \
+          libkmod2
+        sudo apt remove multipath-tools \
+          multipath-tools-boot
+    - id: install-dracut
+      shell: bash
+      env:
+        DRACUT_VERSION: 102
+      run: |
+        sudo git clone --depth 1 --branch $DRACUT_VERSION https://github.com/dracut-ng/dracut-ng.git
+        cd dracut-ng
+        sudo ./configure \
+          --sysconfdir=/etc \
+          --prefix=/usr \
+          --libdir=/usr/lib \
+          --systemdsystemunitdir=/usr/lib/systemd/system \
+          --bashcompletiondir=$(pkg-config --variable=completionsdir bash-completion)
+        sudo make
+        sudo make install
+    - id: install-pacman
+      shell: bash
+      env:
+        PACMAN_VERSION: 6.0.2
+      run: |
+        sudo git clone --depth 1 https://gitlab.manjaro.org/packages/core/pacman.git
+        pushd pacman
+          sudo wget https://sources.archlinux.org/other/pacman/pacman-${PACMAN_VERSION}.tar.xz
+          sudo tar -xvf pacman-${PACMAN_VERSION}.tar.xz
+          pushd pacman-${PACMAN_VERSION}
+            sudo meson --prefix=/usr \
+                      --buildtype=plain \
+                      -Ddoc=disabled \
+                      -Ddoxygen=enabled \
+                      -Dscriptlet-shell=/usr/bin/bash \
+                      -Dldconfig=/usr/bin/ldconfig \
+                      build
+            sudo meson compile -C build
+            sudo meson install -C build
+          popd
+          sudo install -m644 pacman.conf /etc/pacman.conf
+          sudo install -m644 makepkg.conf /etc/
+          sudo mkdir -p /etc/pacman.d
+          sudo touch /etc/pacman.d/mirrorlist
+        popd
+        sudo rm -rf pacman
+    - id: install-keyrings
+      shell: bash
+      run: |
+        sudo install -dm755 /usr/share/pacman/keyrings/
+
+        sudo git clone --depth 1 https://gitlab.manjaro.org/packages/core/manjaro-keyring.git
+        pushd manjaro-keyring
+          sudo install -m0644 manjaro.gpg /usr/share/pacman/keyrings/
+          sudo install -m0644 manjaro-trusted /usr/share/pacman/keyrings/
+          sudo install -m0644 manjaro-revoked /usr/share/pacman/keyrings/
+        popd
+
+        mkdir -p archlinux-keyring
+        pushd archlinux-keyring
+          wget https://archlinux.org/packages/core/any/archlinux-keyring/download -O /tmp/archlinux-keyring.tar.zst
+          tar --use-compress-program=unzstd --strip-components=4 --wildcards -xvf /tmp/archlinux-keyring.tar.zst usr/share/pacman/keyrings/*
+          sudo install -m0644 archlinux.gpg /usr/share/pacman/keyrings/
+          sudo install -m0644 archlinux-trusted /usr/share/pacman/keyrings/
+          sudo install -m0644 archlinux-revoked /usr/share/pacman/keyrings/
+        popd
+
+        sudo pacman-key --init
+        sudo pacman-key --populate archlinux manjaro
+
+        for gpg_key in ${{ inputs.additional-trusted-gpg }}; do
+          sudo pacman-key --keyserver keys.openpgp.org --recv-key $gpg_key
+          sudo pacman-key --lsign-key $gpg_key
+        done
+        sudo rm -rf *-keyring
+    - id: install-arch-install-scripts
+      shell: bash
+      env:
+        VERSION: "28"
+      run: |
+        sudo wget https://github.com/archlinux/arch-install-scripts/archive/refs/tags/v${VERSION}.tar.gz -O arch-install-scripts.tar.gz
+        sudo tar -xvf arch-install-scripts.tar.gz
+        sudo make -C arch-install-scripts-${VERSION}
+        sudo make -C arch-install-scripts-${VERSION} check
+        sudo make -C arch-install-scripts-${VERSION} PREFIX=/usr install
+        
+        sudo wget https://gitlab.manjaro.org/applications/pacman-mirrors/-/tree/master/data/etc/pacman-mirrors.conf -O /etc/pacman-mirrors.conf
+        sudo rm -rf arch-install-scripts*
+    - id: install-arkdep
+      shell: bash
+      env:
+        BRANCH: "mjr"
+        REPO: 'https://github.com/philmmanjaro/arkdep.git'
+      run: |
+        sudo git clone ${BRANCH:+--branch ${BRANCH}} --depth 1 ${REPO} arkdep
+        sudo install -d /etc/arkdep
+        sudo install -d /usr/bin
+        sudo install -m755 arkdep/arkdep-build /usr/bin/
+        sudo install -m755 arkdep/arkdep /usr/bin/
+        sudo rm -rf arkdep
+    - id: checkout-arkdep-profiles
+      shell: bash
+      env:
+        REPO: ${{ inputs.arkdep-profiles-repo }}
+        BRANCH: ${{ inputs.arkdep-profiles-branch }}
+      run: git clone ${BRANCH:+--branch ${BRANCH}} --depth 1 ${REPO} arkdep-profiles
+    - id: cleanup_space_workaround
+      shell: bash
+      run: |
+        sudo apt-get clean
+        sudo rm -rf /usr/share/dotnet
+        sudo rm -rf /opt/ghc
+        sudo rm -rf "/usr/local/share/boost"
+        sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+    - id: image-build
+      shell: bash
+      env:
+        EDITION: ${{ inputs.edition }}
+      run: |
+        echo "## building OS image"
+        cd arkdep-profiles
+        sudo sed -i -e "s|31457280' # 30G|24414062' # 25G|" /usr/bin/arkdep-build
+        sudo arkdep-build $EDITION
+        IMG_BASENAME="$(basename $(ls target/*img) .img)"
+        echo "image-basename=$IMG_BASENAME" >> $GITHUB_OUTPUT
+        sudo rm -rf target/$IMG_BASENAME
+    - id: prepare-arkdep-upload
+      shell: bash
+      env:
+        EDITION: ${{ inputs.edition }}
+      run: |
+        echo "## creating folder structure"
+        VERSION=$(date +%Y%m%d)
+        sudo mkdir -p arkdep-$EDITION/$VERSION
+        sudo mv arkdep-profiles/target/${{ steps.image-build.outputs.image-basename }}.img.sha256 arkdep-$EDITION/$VERSION/${{ steps.image-build.outputs.image-basename }}.img.sha256
+        sudo mv arkdep-profiles/target/${{ steps.image-build.outputs.image-basename }}.img.tar.zst arkdep-$EDITION/$VERSION/${{ steps.image-build.outputs.image-basename }}.img.tar.zst
+        sudo mv arkdep-profiles/target/${{ steps.image-build.outputs.image-basename }}.img.tar.zst.sha256 arkdep-$EDITION/$VERSION/${{ steps.image-build.outputs.image-basename }}.img.tar.zst.sha256
+        sudo cp arkdep-profiles/target/${{ steps.image-build.outputs.image-basename }}.pkgs arkdep-$EDITION/$VERSION/${{ steps.image-build.outputs.image-basename }}.pkgs
+        sudo mkdir -p arkdep/$EDITION
+        sudo cp arkdep-profiles/target/${{ steps.image-build.outputs.image-basename }}.pkgs arkdep/$EDITION/${{ steps.image-build.outputs.image-basename }}.pkgs
+        sudo mv arkdep-profiles/target/${{ steps.image-build.outputs.image-basename }}.tar.zst arkdep/$EDITION/${{ steps.image-build.outputs.image-basename }}.tar.zst
+    - id: create-arkdep-database
+      shell: bash
+      env:
+        EDITION: ${{ inputs.edition }}
+      run: |
+        echo "## creating arkdep database"
+        touch old-arkdep-database
+        wget https://download.manjaro.org/arkdep/$EDITION/database -O old-arkdep-database || true
+        echo "${{ steps.image-build.outputs.image-basename }}:zst:$(sha1sum arkdep/$EDITION/${{ steps.image-build.outputs.image-basename }}.tar.zst | cut -d' ' -f1)" > new-arkdep-database-entry
+        sudo chown runner:runner arkdep/$EDITION
+        sudo cat new-arkdep-database-entry old-arkdep-database > arkdep/$EDITION/database
+    - name: upload-cdn77-s3
+      shell: bash -O extglob {0}
+      run: |
+        # if is not yet supported in composite https://github.com/actions/runner/blob/main/docs/adrs/0549-composite-run-steps.md#if-condition
+        if [ -z "${{ inputs.s3-cfg }}" ]; then
+          echo "## credentials for cdn77 S3 upload not provided. Skipping."
+          exit 0
+        fi
+
+        echo "## cdn77 S3 upload"
+        # copy config
+        echo "${{ inputs.s3-cfg }}" > /home/runner/.s3cfg
+        # upload arkdep
+        s3cmd sync --progress --recursive -F "arkdep" s3://s3downloadseu/
+        s3cmd sync --progress --recursive -F "arkdep-${{ inputs.edition }}" s3://s3downloadseu/
+    - name: purge-cdn77-s3
+      shell: bash -O extglob {0}
+      run: |
+        # if is not yet supported in composite https://github.com/actions/runner/blob/main/docs/adrs/0549-composite-run-steps.md#if-condition
+        if [ -z "${{ inputs.s3-cdn77-id }}" ]; then
+          echo "## credentials for cdn77 S3 ID not provided. Skipping."
+          exit 0
+        fi
+        if [ -z "${{ inputs.s3-cdn77-bearer }}" ]; then
+          echo "## credentials for cdn77 S3 bearer not provided. Skipping."
+          exit 0
+        fi
+        curl \
+          --request POST https://api.cdn77.com/v3/cdn/${{ inputs.s3-cdn77-id }}/job/purge \
+          --header "Authorization: Bearer ${{ inputs.s3-cdn77-bearer }}" \
+          --data-raw '{
+              "paths": [
+              "/arkdep/${{ inputs.edition }}/database"
+              ]
+          }'
