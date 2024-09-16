@@ -201,9 +201,11 @@ runs:
         cd arkdep-profiles
         sudo sed -i -e "s|31457280' # 30G|24414062' # 25G|" /usr/bin/arkdep-build
         sudo arkdep-build $EDITION
-        #IMG_BASENAME="$(basename $(ls target/*img) .img)"
+        #IMG_BASENAME="$(basename $(ls target/*.img) .img)"
         #echo "image-basename=$IMG_BASENAME" >> $GITHUB_OUTPUT
         #sudo rm -rf target/$IMG_BASENAME
+        BTRFS_BASENAME="$(basename $(ls target/*.tar.zst) .tar.zst)"
+        echo "btrfs-basename=$BTRFS_BASENAME" >> $GITHUB_OUTPUT
     - id: prepare-arkdep-upload
       shell: bash
       env:
@@ -217,8 +219,8 @@ runs:
         #sudo mv arkdep-profiles/target/${{ steps.image-build.outputs.image-basename }}.img.tar.zst.sha256 arkdep-$EDITION/$VERSION/${{ steps.image-build.outputs.image-basename }}.img.tar.zst.sha256
         #sudo cp arkdep-profiles/target/${{ steps.image-build.outputs.image-basename }}.pkgs arkdep-$EDITION/$VERSION/${{ steps.image-build.outputs.image-basename }}.pkgs
         sudo mkdir -p arkdep/$EDITION
-        sudo cp arkdep-profiles/target/${{ steps.image-build.outputs.image-basename }}.pkgs arkdep/$EDITION/${{ steps.image-build.outputs.image-basename }}.pkgs
-        sudo mv arkdep-profiles/target/${{ steps.image-build.outputs.image-basename }}.tar.zst arkdep/$EDITION/${{ steps.image-build.outputs.image-basename }}.tar.zst
+        sudo cp arkdep-profiles/target/${{ steps.image-build.outputs.btrfs-basename }}.pkgs arkdep/$EDITION/${{ steps.image-build.outputs.btrfs-basename }}.pkgs
+        sudo mv arkdep-profiles/target/${{ steps.image-build.outputs.btrfs-basename }}.tar.zst arkdep/$EDITION/${{ steps.image-build.outputs.btrfs-basename }}.tar.zst
     - id: create-arkdep-database
       shell: bash
       env:
@@ -227,7 +229,7 @@ runs:
         echo "## creating arkdep database"
         touch old-arkdep-database
         wget https://download.manjaro.org/arkdep/$EDITION/database -O old-arkdep-database || true
-        echo "${{ steps.image-build.outputs.image-basename }}:zst:$(sha1sum arkdep/$EDITION/${{ steps.image-build.outputs.image-basename }}.tar.zst | cut -d' ' -f1)" > new-arkdep-database-entry
+        echo "${{ steps.image-build.outputs.brfs-basename }}:zst:$(sha1sum arkdep/$EDITION/${{ steps.image-build.outputs.btrfs-basename }}.tar.zst | cut -d' ' -f1)" > new-arkdep-database-entry
         sudo chown runner:runner arkdep/$EDITION
         sudo cat new-arkdep-database-entry old-arkdep-database > arkdep/$EDITION/database
     - name: upload-cdn77-s3
