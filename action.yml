@@ -201,21 +201,21 @@ runs:
         cd arkdep-profiles
         sudo sed -i -e "s|31457280' # 30G|24414062' # 25G|" /usr/bin/arkdep-build
         sudo arkdep-build $EDITION
-        IMG_BASENAME="$(basename $(ls target/*img) .img)"
-        echo "image-basename=$IMG_BASENAME" >> $GITHUB_OUTPUT
-        sudo rm -rf target/$IMG_BASENAME
+        #IMG_BASENAME="$(basename $(ls target/*img) .img)"
+        #echo "image-basename=$IMG_BASENAME" >> $GITHUB_OUTPUT
+        #sudo rm -rf target/$IMG_BASENAME
     - id: prepare-arkdep-upload
       shell: bash
       env:
         EDITION: ${{ inputs.edition }}
       run: |
         echo "## creating folder structure"
-        VERSION=$(date +%Y%m%d)
-        sudo mkdir -p arkdep-$EDITION/$VERSION
-        sudo mv arkdep-profiles/target/${{ steps.image-build.outputs.image-basename }}.img.sha256 arkdep-$EDITION/$VERSION/${{ steps.image-build.outputs.image-basename }}.img.sha256
-        sudo mv arkdep-profiles/target/${{ steps.image-build.outputs.image-basename }}.img.tar.zst arkdep-$EDITION/$VERSION/${{ steps.image-build.outputs.image-basename }}.img.tar.zst
-        sudo mv arkdep-profiles/target/${{ steps.image-build.outputs.image-basename }}.img.tar.zst.sha256 arkdep-$EDITION/$VERSION/${{ steps.image-build.outputs.image-basename }}.img.tar.zst.sha256
-        sudo cp arkdep-profiles/target/${{ steps.image-build.outputs.image-basename }}.pkgs arkdep-$EDITION/$VERSION/${{ steps.image-build.outputs.image-basename }}.pkgs
+        #VERSION=$(date +%Y%m%d)
+        #sudo mkdir -p arkdep-$EDITION/$VERSION
+        #sudo mv arkdep-profiles/target/${{ steps.image-build.outputs.image-basename }}.img.sha256 arkdep-$EDITION/$VERSION/${{ steps.image-build.outputs.image-basename }}.img.sha256
+        #sudo mv arkdep-profiles/target/${{ steps.image-build.outputs.image-basename }}.img.tar.zst arkdep-$EDITION/$VERSION/${{ steps.image-build.outputs.image-basename }}.img.tar.zst
+        #sudo mv arkdep-profiles/target/${{ steps.image-build.outputs.image-basename }}.img.tar.zst.sha256 arkdep-$EDITION/$VERSION/${{ steps.image-build.outputs.image-basename }}.img.tar.zst.sha256
+        #sudo cp arkdep-profiles/target/${{ steps.image-build.outputs.image-basename }}.pkgs arkdep-$EDITION/$VERSION/${{ steps.image-build.outputs.image-basename }}.pkgs
         sudo mkdir -p arkdep/$EDITION
         sudo cp arkdep-profiles/target/${{ steps.image-build.outputs.image-basename }}.pkgs arkdep/$EDITION/${{ steps.image-build.outputs.image-basename }}.pkgs
         sudo mv arkdep-profiles/target/${{ steps.image-build.outputs.image-basename }}.tar.zst arkdep/$EDITION/${{ steps.image-build.outputs.image-basename }}.tar.zst
@@ -244,7 +244,7 @@ runs:
         echo "${{ inputs.s3-cfg }}" > /home/runner/.s3cfg
         # upload arkdep
         s3cmd sync --progress --recursive -F "arkdep" s3://s3downloadseu/
-        s3cmd sync --progress --recursive -F "arkdep-${{ inputs.edition }}" s3://s3downloadseu/
+        #s3cmd sync --progress --recursive -F "arkdep-${{ inputs.edition }}" s3://s3downloadseu/
     - name: purge-cdn77-s3
       shell: bash -O extglob {0}
       run: |
