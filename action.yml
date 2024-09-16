@@ -229,7 +229,7 @@ runs:
         echo "## creating arkdep database"
         touch old-arkdep-database
         wget https://download.manjaro.org/arkdep/$EDITION/database -O old-arkdep-database || true
-        echo "${{ steps.image-build.outputs.btrfs-basename }}:zst:$(sha1sum arkdep/$EDITION/${{ steps.image-build.outputs.btrfs-basename }}.tar.zst | cut -d' ' -f1)" > new-arkdep-database-entry
+        echo "${{ steps.image-build.outputs.btrfs-basename }}:zst:$(sha256sum arkdep/$EDITION/${{ steps.image-build.outputs.btrfs-basename }}.tar.zst | cut -d' ' -f1)" > new-arkdep-database-entry
         sudo chown runner:runner arkdep/$EDITION
         sudo cat new-arkdep-database-entry old-arkdep-database > arkdep/$EDITION/database
     - name: upload-cdn77-s3
