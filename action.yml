@@ -177,8 +177,8 @@ runs:
         cd ..
         sudo install -d /etc/arkdep
         sudo install -d /usr/bin
-        sudo install -m755 arkdep-build /usr/bin/
-        sudo install -m755 arkdep /usr/bin/
+        sudo install -m755 arkdep/arkdep-build /usr/bin/
+        sudo install -m755 arkdep/arkdep /usr/bin/
         sudo rm -rf arkdep
         sudo rm manjaro.patch
     - id: checkout-arkdep-profiles
