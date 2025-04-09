@@ -170,16 +170,16 @@ runs:
         BRANCH: "main"
         REPO: 'https://github.com/arkanelinux/arkdep.git'
       run: |
-        sudo wget https://raw.githubusercontent.com/arkanelinux/arkdep/refs/heads/main/arkdep
-        sudo wget https://raw.githubusercontent.com/arkanelinux/arkdep/refs/heads/main/arkdep-build
+        sudo git clone ${BRANCH:+--branch ${BRANCH}} --depth 1 ${REPO} arkdep
         sudo wget https://gitlab.manjaro.org/packages/extra/arkdep/-/raw/main/manjaro.patch
-        sudo patch -p2 -i manjaro.patch
+        cd arkdep
+        sudo patch -p1 -i ../manjaro.patch
+        cd ..
         sudo install -d /etc/arkdep
         sudo install -d /usr/bin
         sudo install -m755 arkdep-build /usr/bin/
         sudo install -m755 arkdep /usr/bin/
-        sudo rm arkdep-build
-        sudo rm arkdep
+        sudo rm -rf arkdep
         sudo rm manjaro.patch
     - id: checkout-arkdep-profiles
       shell: bash
